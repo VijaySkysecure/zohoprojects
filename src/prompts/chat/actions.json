@@ -1,0 +1,50 @@
+[
+  {
+      "name": "GetPendingTasksByOwner",
+      "description": "Retrieves a list of the latest 15 pending tasks for a specific owner from Zoho Projects. A task is considered pending if its status is 'Open', 'In Progress', or 'To be Tested'. This action can handle partial owner names, such as just the first name.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ownerName": {
+            "type": "string",
+            "description": "The full or partial name of the task owner (e.g., 'Anuj', 'John Doe')."
+          }
+        },
+        "required": [
+          "ownerName"
+        ]
+      }
+  },
+  {
+    "name": "GetProjectDetails",
+    "description": "Retrieves detailed information about a specific project in Zoho Projects. Supports partial project name search. If multiple projects match, the agent must ask the user to clarify. Can be used to answer specific questions about a project field, and should also return a full summary.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "projectName": {
+          "type": "string",
+          "description": "Partial name of the project (e.g., 'PowerGrid', 'Titan'). Case-insensitive."
+        },
+        "fields": {
+          "type": "array",
+          "description": "Optional list of specific project fields to retrieve (e.g., ['status', 'issues']). If not provided, return the full summary.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "status",
+              "percent",
+              "openTasks",
+              "closedTasks",
+              "issues",
+              "startDate",
+              "endDate",
+              "tag"
+            ]
+          }
+        }
+      },
+      "required": ["projectName"]
+    }
+  }
+]
