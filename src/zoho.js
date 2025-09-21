@@ -218,7 +218,7 @@ async function getProjects(token) {
 }
 
 async function getPendingTasksByOwner(context, state, ownerName) {
-  const teamsChatId = context.activity.from.id;
+  const teamsChatId = "11111";
   const portalId = config.zohoPortalId;
 
   const resolvedOwner = await resolveOwnerId(teamsChatId, portalId, ownerName);
