@@ -23,20 +23,24 @@ async function refreshAccessToken(teamsChatId, refreshToken = null) {
       refreshToken = existingToken.refreshToken;
     }
 
-    const response = await axios.post(
+    const body = new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: config.zohoClientId,
+      client_secret: config.zohoClientSecret,
+      refresh_token: refreshToken,
+    });
+
+    // Send POST with body
+    response = await axios.post(
       "https://accounts.zoho.in/oauth/v2/token",
-      null,
-      {
-        params: {
-          grant_type: "refresh_token",
-          client_id: config.zohoClientId,
-          client_secret: config.zohoClientSecret,
-          refresh_token: refreshToken,
-        },
-      }
+      body.toString(),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
     );
 
+
     const { access_token, expires_in } = response.data;
+
+    console.log("response.data", response.data)
     if (!access_token || !expires_in) {
       throw new Error("Invalid refresh token response");
     }
@@ -49,7 +53,7 @@ async function refreshAccessToken(teamsChatId, refreshToken = null) {
 
     return updatedToken;
   } catch (error) {
-    console.error(`[TOKEN REFRESH] Error refreshing token: ${error.message}`);
+    console.error(`[TOKEN REFRESH] Error refreshing token: ${error}`);
     throw error;
   }
 }
@@ -89,9 +93,8 @@ async function makeZohoAPICall(
   portalId = null
 ) {
   try {
-    const url = `${
-      zohoApiBaseUrl.endsWith("/") ? zohoApiBaseUrl : zohoApiBaseUrl + "/"
-    }${endpoint}`;
+    const url = `${zohoApiBaseUrl.endsWith("/") ? zohoApiBaseUrl : zohoApiBaseUrl + "/"
+      }${endpoint}`;
 
     const headers = {
       Authorization: `Zoho-oauthtoken ${token}`,
@@ -157,6 +160,7 @@ async function resolveOwnerId(teamsChatId, portalId, ownerName) {
     const token = await getUserToken(teamsChatId); // fetch token for the actual Teams user
     if (!token) throw new Error("Token not found");
 
+    console.log("ownerNameownerName:", ownerName)
     const response = await makeZohoAPICall(
       `portal/${portalId}/users`,
       token.accessToken,
@@ -167,22 +171,25 @@ async function resolveOwnerId(teamsChatId, portalId, ownerName) {
       portalId
     );
 
+    // console.log("responserespos:", response.data)
     const users = response?.data?.users || [];
+
+
     if (!users.length) return null;
 
     let owner = users.find(
-      u => u.name.toLowerCase() === ownerName.toLowerCase()
+      u => u.full_name.toLowerCase() === ownerName.toLowerCase()
     );
     if (!owner) {
       owner = users.find(u =>
-        u.name.toLowerCase().includes(ownerName.toLowerCase())
+        u.full_name.toLowerCase().includes(ownerName.toLowerCase())
       );
     }
     if (!owner) return null;
 
-    return { id: owner.zpuid || owner.id, name: owner.name };
+    return { id: owner.zpuid || owner.id, name: owner.full_name };
   } catch (err) {
-    console.error("[Zoho] Error in resolveOwnerId:", err.message);
+    console.error("[Zoho] Error in resolveOwnerId:", err);
     return null;
   }
 }

@@ -39,7 +39,7 @@ const userTokenSchema = new mongoose.Schema({
 });
 
 // Update the updatedAt field before saving
-userTokenSchema.pre('save', function(next) {
+userTokenSchema.pre('save', function (next) {
   this.updatedAt = Date.now();
   next();
 });
@@ -47,45 +47,7 @@ userTokenSchema.pre('save', function(next) {
 // Create the model
 const UserToken = mongoose.model('UserToken', userTokenSchema);
 
-// -------------------------
-// CONNECTION MANAGEMENT
-// -------------------------
-let isConnected = false;
 
-async function connectToMongoDB() {
-  if (isConnected) {
-    return;
-  }
-
-  try {
-    if (!config.mongoDBConnectionString) {
-      throw new Error('MongoDB connection string is not configured');
-    }
-
-    await mongoose.connect(config.mongoDBConnectionString, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-
-    isConnected = true;
-    console.log('Connected to MongoDB successfully');
-  } catch (error) {
-    console.error('MongoDB connection error:', error);
-    throw error;
-  }
-}
-
-async function disconnectFromMongoDB() {
-  if (isConnected) {
-    await mongoose.disconnect();
-    isConnected = false;
-    console.log('Disconnected from MongoDB');
-  }
-}
-
-// -------------------------
-// TOKEN MANAGEMENT FUNCTIONS
-// -------------------------
 
 /**
  * Store or update user token in MongoDB
@@ -98,10 +60,9 @@ async function disconnectFromMongoDB() {
  */
 async function storeUserToken(teamsChatId, userId, accessToken, refreshToken, expiresIn) {
   try {
-    await connectToMongoDB();
 
     const expiresAt = Date.now() + (expiresIn * 1000);
-    
+
     const tokenData = {
       teamsChatId,
       userId,
@@ -114,10 +75,9 @@ async function storeUserToken(teamsChatId, userId, accessToken, refreshToken, ex
     const result = await UserToken.findOneAndUpdate(
       { teamsChatId },
       tokenData,
-      { 
-        upsert: true, 
-        new: true,
-        runValidators: true
+      {
+        upsert: true,
+        new: true
       }
     );
 
@@ -137,7 +97,7 @@ async function storeUserToken(teamsChatId, userId, accessToken, refreshToken, ex
 async function getUserToken(teamsChatId) {
   try {
     console.log(`[MongoDB] Getting token for teamsChatId: ${teamsChatId}`);
-    await connectToMongoDB();
+   
 
     const token = await UserToken.findOne({ teamsChatId });
     console.log(`[MongoDB] Token query result:`, token ? 'Found' : 'Not found');
@@ -146,11 +106,6 @@ async function getUserToken(teamsChatId) {
       console.log(`[MongoDB] No token found for teamsChatId: ${teamsChatId}`);
       return null;
     }
-
-    // Log expiration state but return the token so caller can handle refresh logic
-    const now = Date.now();
-    const isExpired = token.expiresAt < now;
-    console.log(`[MongoDB] Token expiration check - Now: ${now}, Expires: ${token.expiresAt}, IsExpired: ${isExpired}`);
 
     return token;
   } catch (error) {
@@ -167,11 +122,9 @@ async function getUserToken(teamsChatId) {
  */
 async function deleteUserToken(teamsChatId) {
   try {
-    await connectToMongoDB();
 
-    const result = await UserToken.deleteOne({ teamsChatId });
-    console.log(`Deleted token for teamsChatId: ${teamsChatId}`);
-    return result.deletedCount > 0;
+    const result = await UserToken.findOneAndDelete({ teamsChatId });
+    return result;
   } catch (error) {
     console.error('Error deleting user token:', error);
     throw error;
@@ -186,7 +139,6 @@ async function deleteUserToken(teamsChatId) {
  */
 async function updateUserToken(teamsChatId, updateData) {
   try {
-    await connectToMongoDB();
 
     const result = await UserToken.findOneAndUpdate(
       { teamsChatId },
@@ -209,8 +161,6 @@ async function updateUserToken(teamsChatId, updateData) {
 // EXPORTS
 // -------------------------
 module.exports = {
-  connectToMongoDB,
-  disconnectFromMongoDB,
   storeUserToken,
   getUserToken,
   deleteUserToken,

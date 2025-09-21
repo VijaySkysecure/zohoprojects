@@ -7,17 +7,21 @@ const adapter = require("./adapter");
 // This agent's main dialog.
 const app = require("./app/app");
 
+const MongoDbConnection = require("./mongoose");
+
 // Import MongoDB functions
-const { 
-  storeUserToken, 
-  getUserToken, 
-  deleteUserToken, 
-  updateUserToken 
+const {
+  storeUserToken,
+  getUserToken,
+  deleteUserToken,
+  updateUserToken
 } = require("./mongodb");
 
 // Create express application.
 const expressApp = express();
 expressApp.use(express.json());
+
+new MongoDbConnection();
 
 const server = expressApp.listen(process.env.port || process.env.PORT || 3978, () => {
   console.log(`\nAgent started, ${expressApp.name} listening to`, server.address());
@@ -42,8 +46,8 @@ expressApp.post("/api/auth/token", async (req, res) => {
 
     // Store the token
     const result = await storeUserToken(teamsChatId, userId, accessToken, refreshToken, expiresIn);
-    
-    res.json({
+
+    return res.json({
       success: true,
       message: "User token stored successfully",
       data: {
@@ -54,7 +58,7 @@ expressApp.post("/api/auth/token", async (req, res) => {
     });
   } catch (error) {
     console.error("Error storing user token:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: "Failed to store user token",
       details: error.message
@@ -66,7 +70,7 @@ expressApp.post("/api/auth/token", async (req, res) => {
 expressApp.get("/api/auth/token/:teamsChatId", async (req, res) => {
   try {
     const { teamsChatId } = req.params;
-    
+
     if (!teamsChatId) {
       return res.status(400).json({
         success: false,
@@ -75,7 +79,7 @@ expressApp.get("/api/auth/token/:teamsChatId", async (req, res) => {
     }
 
     const token = await getUserToken(teamsChatId);
-    
+
     if (!token) {
       return res.status(404).json({
         success: false,
@@ -83,7 +87,7 @@ expressApp.get("/api/auth/token/:teamsChatId", async (req, res) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         teamsChatId: token.teamsChatId,
@@ -94,7 +98,7 @@ expressApp.get("/api/auth/token/:teamsChatId", async (req, res) => {
     });
   } catch (error) {
     console.error("Error getting user token:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: "Failed to get user token",
       details: error.message
@@ -107,7 +111,7 @@ expressApp.put("/api/auth/token/:teamsChatId", async (req, res) => {
   try {
     const { teamsChatId } = req.params;
     const updateData = req.body;
-    
+
     if (!teamsChatId) {
       return res.status(400).json({
         success: false,
@@ -120,7 +124,7 @@ expressApp.put("/api/auth/token/:teamsChatId", async (req, res) => {
     delete updateData.createdAt;
 
     const result = await updateUserToken(teamsChatId, updateData);
-    
+
     if (!result) {
       return res.status(404).json({
         success: false,
@@ -128,7 +132,7 @@ expressApp.put("/api/auth/token/:teamsChatId", async (req, res) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       message: "User token updated successfully",
       data: {
@@ -140,7 +144,7 @@ expressApp.put("/api/auth/token/:teamsChatId", async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating user token:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: "Failed to update user token",
       details: error.message
@@ -152,7 +156,7 @@ expressApp.put("/api/auth/token/:teamsChatId", async (req, res) => {
 expressApp.delete("/api/auth/token/:teamsChatId", async (req, res) => {
   try {
     const { teamsChatId } = req.params;
-    
+
     if (!teamsChatId) {
       return res.status(400).json({
         success: false,
@@ -161,7 +165,7 @@ expressApp.delete("/api/auth/token/:teamsChatId", async (req, res) => {
     }
 
     const deleted = await deleteUserToken(teamsChatId);
-    
+
     if (!deleted) {
       return res.status(404).json({
         success: false,
@@ -197,9 +201,9 @@ expressApp.get("/api/test/token/:teamsChatId", async (req, res) => {
   try {
     const { teamsChatId } = req.params;
     console.log(`[TEST] Checking token for teamsChatId: ${teamsChatId}`);
-    
+
     const token = await getUserToken(teamsChatId);
-    
+
     res.json({
       success: true,
       teamsChatId,
@@ -226,14 +230,14 @@ expressApp.get("/api/debug/token/:teamsChatId", async (req, res) => {
   try {
     const { teamsChatId } = req.params;
     const token = await getUserToken(teamsChatId);
-    
+
     if (!token) {
       return res.json({
         success: false,
         message: "No token found"
       });
     }
-    
+
     res.json({
       success: true,
       token: {
@@ -260,7 +264,7 @@ expressApp.get("/api/test/zoho/:teamsChatId", async (req, res) => {
   try {
     const { teamsChatId } = req.params;
     console.log(`[TEST ZOHO] Testing Zoho API for teamsChatId: ${teamsChatId}`);
-    
+
     const token = await getUserToken(teamsChatId);
     if (!token) {
       return res.status(404).json({
@@ -271,7 +275,7 @@ expressApp.get("/api/test/zoho/:teamsChatId", async (req, res) => {
 
     const axios = require('axios');
     const config = require('./config');
-    
+
     // Test multiple endpoints to find what works
     const tests = [
       {
@@ -295,9 +299,9 @@ expressApp.get("/api/test/zoho/:teamsChatId", async (req, res) => {
         url: `${config.zohoApiBaseUrl}/portal/${config.zohoPortalId}/users`
       }
     ];
-    
+
     const results = [];
-    
+
     for (const test of tests) {
       try {
         console.log(`[TEST ZOHO] Testing ${test.name}: ${test.url}`);
@@ -307,14 +311,14 @@ expressApp.get("/api/test/zoho/:teamsChatId", async (req, res) => {
             'Content-Type': 'application/json'
           }
         });
-        
+
         results.push({
           name: test.name,
           success: true,
           status: response.status,
           data: response.data
         });
-        
+
         // If one works, return success
         res.json({
           success: true,
@@ -326,7 +330,7 @@ expressApp.get("/api/test/zoho/:teamsChatId", async (req, res) => {
           }
         });
         return;
-        
+
       } catch (error) {
         console.log(`[TEST ZOHO] ${test.name} failed:`, error.response?.status, error.response?.data?.error?.message);
         results.push({
@@ -337,14 +341,14 @@ expressApp.get("/api/test/zoho/:teamsChatId", async (req, res) => {
         });
       }
     }
-    
+
     // If all tests failed
     res.status(500).json({
       success: false,
       message: "All Zoho API tests failed",
       results: results
     });
-    
+
   } catch (error) {
     console.error("[TEST ZOHO] Error:", error.response?.data || error.message);
     res.status(500).json({
@@ -360,7 +364,7 @@ expressApp.post("/api/copy-token/:fromTeamsChatId/:toTeamsChatId", async (req, r
   try {
     const { fromTeamsChatId, toTeamsChatId } = req.params;
     console.log(`[COPY] Copying token from ${fromTeamsChatId} to ${toTeamsChatId}`);
-    
+
     // Get the source token
     const sourceToken = await getUserToken(fromTeamsChatId);
     if (!sourceToken) {
@@ -369,7 +373,7 @@ expressApp.post("/api/copy-token/:fromTeamsChatId/:toTeamsChatId", async (req, r
         error: `No token found for source teamsChatId: ${fromTeamsChatId}`
       });
     }
-    
+
     // Store it with the new teamsChatId
     const result = await storeUserToken(
       toTeamsChatId,
@@ -378,7 +382,7 @@ expressApp.post("/api/copy-token/:fromTeamsChatId/:toTeamsChatId", async (req, r
       sourceToken.refreshToken,
       Math.floor((sourceToken.expiresAt - Date.now()) / 1000) // Convert back to seconds
     );
-    
+
     res.json({
       success: true,
       message: `Token copied from ${fromTeamsChatId} to ${toTeamsChatId}`,

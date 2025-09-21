@@ -37,16 +37,7 @@ const prompts = new PromptManager({
   promptsFolder: path.join(__dirname, "../prompts"),
 });
 
-// helper function for prompt template
-prompts.addFunction("isAuthenticated", async (context, memory) => {
-  const teamsChatId = context.activity.channelData?.teamsChatId || context.activity.from.id;
-  try {
-    const token = await getUserToken(teamsChatId);
-    return !!(token && token.accessToken);
-  } catch {
-    return false;
-  }
-});
+
 
 // helper function for IST date-time
 prompts.addFunction("currentDateTime", async () => {
@@ -166,7 +157,7 @@ async function initializeConversationState(state) {
 //   }
 // });
 
-
+const teamsChatId="11111"
 app.ai.action("GetPendingTasksByOwner", async (context, state, parameters) => {
   try {
     const { ownerName } = parameters;
@@ -175,7 +166,7 @@ app.ai.action("GetPendingTasksByOwner", async (context, state, parameters) => {
       return "Missing required parameter: ownerName";
     }
 
-    const teamsChatId = context.activity.from.id;
+    // const teamsChatId = context.activity.from.id;
 
     // 1️⃣ Get user token
     let tokenDoc;
@@ -230,14 +221,14 @@ app.ai.action("GetPendingTasksByOwner", async (context, state, parameters) => {
 app.ai.action("GetProjectDetails", async (context, state, params) => {
   try {
     const projectName = params.projectName;
-    const teamsChatId = context.activity.from.id;
+    // const teamsChatId = context.activity.from.id;
 
     if (!projectName) {
       await context.sendActivity(MessageFactory.text("❌ Missing required parameter: projectName."));
       return "Missing required parameters";
     }
 
-    const projectResult = await getProjectByName(teamsChatId, config.zohoPortalId, projectName);
+    const projectResult = await getProjectByName("1111", config.zohoPortalId, projectName);
 
     if (projectResult.notFound) {
       await context.sendActivity(MessageFactory.text("❌ No project found."));
