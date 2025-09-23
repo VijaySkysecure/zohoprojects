@@ -46,5 +46,24 @@
       },
       "required": ["projectName"]
     }
+  },
+  {
+    "name": "ShowTimeLogs",
+    "description": "Shows available time logs data and provides examples of how to query time logs using natural language.",
+    "parameters": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "GetTimeLogs",
+    "description": "Fetches time logs for a user based on natural language queries. Supports queries like 'time logs for Divakar in May' or 'show me Rajat's time logs for first week of April'.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "userInput": { 
+          "type": "string",
+          "description": "Natural language query for time logs (e.g., 'time logs for Divakar in May', 'show me Rajat's time logs for first week of April')"
+        }
+      },
+      "required": ["userInput"]
+    }
   }
 ]
