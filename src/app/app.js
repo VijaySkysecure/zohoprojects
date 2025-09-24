@@ -15,7 +15,8 @@ const {
   resolveOwnerId,
   getUsers,
   getTimeLogsForUser,
-  getAllTimeLogs 
+  getAllTimeLogs,
+  getProjectIssues
 } = require("../zoho");
 
 
@@ -101,64 +102,7 @@ async function initializeConversationState(state) {
   }
 }
 
-// -------------------------
-// AI ACTIONS
-// -------------------------
 
-// Action to get pending tasks by owner
-// app.ai.action("GetPendingTasksByOwner", async (context, state, parameters) => {
-//   try {
-//     await initializeConversationState(state);
-
-//     const teamsChatId = context.activity.from.id;
-//     const token = await getUserToken(teamsChatId);
-
-//     if (!token || !token.accessToken) {
-//       state.conversation.isAuthenticated = false;
-//       await context.sendActivity(MessageFactory.text("🔒 You need to authenticate with Zoho Projects first."));
-//       return "Authentication required";
-//     }
-
-//     if (!parameters.ownerName) {
-//       await context.sendActivity(MessageFactory.text("❌ Missing required parameter: ownerName."));
-//       return "Missing required parameters";
-//     }
-
-//     const resolvedOwner = await resolveOwnerName(context, token.accessToken, parameters.ownerName, teamsChatId, config.zohoPortalId);
-//     if (!resolvedOwner) {
-//       await context.sendActivity(`❌ I couldn't find a user named **${parameters.ownerName}** in your Zoho Projects portal.`);
-//       return "User not found";
-//     }
-
-//     const tasks = await getPendingTasksByOwner(
-//       context,
-//       state,
-//       parameters.ownerName,
-//       parameters.limit || 15
-//     );
-
-//     if (!tasks || tasks.length === 0) {
-//       await context.sendActivity(MessageFactory.text(`📊 No pending tasks found for **${resolvedOwner.name}**.`));
-//       return `No pending tasks found for ${resolvedOwner.name}`;
-//     }
-
-//     const formattedTasks = tasks.map((task, i) =>
-//       `✅ ${i + 1}. **${task.name}** (${task.projectName}) – Due: ${
-//         task.dueDate ? moment(task.dueDate).format("DD MMM YYYY") : "N/A"
-//       }`
-//     );
-
-//     const message = `📊 Found ${tasks.length} pending task(s) for **${resolvedOwner.name}**:\n\n` +
-//       formattedTasks.join("\n");
-
-//     await context.sendActivity(MessageFactory.text(message));
-//     return `Successfully retrieved tasks.`;
-//   } catch (error) {
-//     console.error("Error in GetPendingTasksByOwner:", error);
-//     await context.sendActivity(MessageFactory.text("❌ I couldn’t fetch the data, please try again."));
-//     return `Error occurred: ${error.message}`;
-//   }
-// });
 
 const teamsChatId="11111"
 app.ai.action("GetPendingTasksByOwner", async (context, state, parameters) => {
@@ -307,9 +251,7 @@ app.ai.action("ShowTimeLogs", async (context, state, parameters) => {
   console.log("\n=== SHOW TIME LOGS ACTION CALLED ===");
   console.log("Parameters:", parameters);
   
-  const { MessageFactory } = require("botbuilder");
-  const { getUsers, getAllTimeLogs } = require("../zoho");
-  const moment = require("moment");
+
   const teamsChatId = "11111";
 
   try {
@@ -340,7 +282,7 @@ app.ai.action("ShowTimeLogs", async (context, state, parameters) => {
       `**Query examples:**\n` +
       `• "time logs for Divakar in May"\n` +
       `• "show me Rajat's time logs for first week of April"\n` +
-      `• "time logs for Anuj from 2024-01-01 to 2024-01-31"`;
+      `• "time logs for Anuj from 2025-01-01 to 2025-01-31"`;
     
     await context.sendActivity(MessageFactory.text(message));
     console.log("Time logs summary sent successfully");
@@ -351,92 +293,110 @@ app.ai.action("ShowTimeLogs", async (context, state, parameters) => {
 });
 
 
+// Debug function to test user resolution
+async function debugUserResolution(teamsChatId, userName) {
+  try {
+    const users = await getUsers(teamsChatId);
+    console.log("All available users:");
+    users.forEach((user, index) => {
+      console.log(`  ${index + 1}. ID: ${user.id}, Name: "${user.name}"`);
+    });
+    
+    console.log(`\nSearching for: "${userName}"`);
+    const foundUser = users.find(u => 
+      u.name.toLowerCase().includes(userName.toLowerCase()) ||
+      u.name.toLowerCase().split(' ')[0] === userName.toLowerCase()
+    );
+    
+    if (foundUser) {
+      console.log(`Found user: ID: ${foundUser.id}, Name: "${foundUser.name}"`);
+    } else {
+      console.log("User not found");
+    }
+    
+    return foundUser;
+  } catch (error) {
+    console.error("Debug user resolution error:", error);
+    return null;
+  }
+}
+
 // -------------------------
 // GetTimeLogs action
 app.ai.action("GetTimeLogs", async (context, state, parameters) => {
   console.log("\n=== GET TIME LOGS ACTION CALLED ===");
   console.log("Parameters:", parameters);
   
-  const { MessageFactory } = require("botbuilder");
-  const { getUsers, getAllTimeLogs } = require("../zoho");
-  const moment = require("moment");
   const teamsChatId = "11111";
   
   const { userInput } = parameters || {};
   console.log("User input:", userInput);
   
   if (!userInput) {
-    await context.sendActivity(MessageFactory.text("❌ Please specify which user's time logs you want to see."));
+    await context.sendActivity(MessageFactory.text("Please specify which user's time logs you want to see."));
     return;
   }
   
   try {
-    // Get all time logs and users
-    const [allTimeLogs, users] = await Promise.all([
-      getAllTimeLogs(teamsChatId, config.zohoPortalId),
-      getUsers(teamsChatId)
-    ]);
+    // Get users first for debugging
+    const users = await getUsers(teamsChatId);
+    console.log("Available users:", users.map(u => `${u.name} (ID: ${u.id})`));
     
-    console.log("Total time logs fetched:", allTimeLogs.length);
-    
-    // Parse user input to extract user name and date range
+    // Parse user input first
     const { userName, startDate, endDate, period } = parseTimeLogQuery(userInput, users);
     
     if (!userName) {
-      await context.sendActivity(MessageFactory.text("❌ Could not identify the user. Please specify the user name clearly."));
+      const availableUsers = users.map(u => u.name).join(', ');
+      await context.sendActivity(MessageFactory.text(`Could not identify the user. Available users: ${availableUsers}`));
       return;
     }
-    
+
     if (!startDate || !endDate) {
-      await context.sendActivity(MessageFactory.text("❌ Could not identify the date range. Please specify dates clearly."));
+      await context.sendActivity(MessageFactory.text("Could not identify the date range. Please specify dates clearly."));
       return;
     }
+
+    // Find the user ID for the specific user
+    const targetUser = users.find(u => u.name.toLowerCase() === userName.toLowerCase());
+    if (!targetUser) {
+      await context.sendActivity(MessageFactory.text(`User "${userName}" not found in the system.`));
+      return;
+    }
+
+    console.log(`Fetching time logs for ${userName} (ID: ${targetUser.id}) from ${startDate} to ${endDate}`);
+
+    // Use getTimeLogsForUser instead of getAllTimeLogs
+    const timeLogs = await getTimeLogsForUser(teamsChatId, config.zohoPortalId, targetUser.id, startDate, endDate);
+    console.log(`Found ${timeLogs.length} time log entries`);
     
-    console.log(`Filtering time logs for ${userName} from ${startDate} to ${endDate}`);
-    
-    // Filter time logs for the specified user and date range
-    const filteredLogs = allTimeLogs.filter(log => {
-      const logDate = moment(log.date);
-      const logUserName = log.userName.toLowerCase();
-      const targetUserName = userName.toLowerCase();
-      
-      return logUserName.includes(targetUserName) && 
-             logDate.isSameOrAfter(moment(startDate)) && 
-             logDate.isSameOrBefore(moment(endDate));
-    });
-    
-    console.log(`Found ${filteredLogs.length} time log entries`);
-    
-    if (filteredLogs.length === 0) {
+    if (timeLogs.length === 0) {
       await context.sendActivity(
-        MessageFactory.text(`📊 No time logs found for **${userName}** from ${moment(startDate).format("DD MMM YYYY")} to ${moment(endDate).format("DD MMM YYYY")}.`)
+        MessageFactory.text(`No time logs found for **${userName}** from ${moment(startDate).format("DD MMM YYYY")} to ${moment(endDate).format("DD MMM YYYY")}.`)
       );
       return;
     }
     
-    // Calculate statistics
-    const stats = calculateTimeLogStats(filteredLogs, startDate, endDate);
+    // Calculate statistics and format response
+    const stats = calculateTimeLogStats(timeLogs, startDate, endDate);
     
-    // Format time logs for display
-    const formattedLogs = filteredLogs
+    const formattedLogs = timeLogs
       .sort((a, b) => moment(b.date).diff(moment(a.date)))
+      .slice(0, 20) // Limit to 20 entries
       .map(log => {
         const date = moment(log.date).format("DD MMM YYYY (ddd)");
         const hours = Number(log.hours) || 0;
         const project = log.projectName || "Unknown Project";
-        return `📅 ${date}: ${hours} hours - ${project}`;
+        return `${date}: ${hours} hours - ${project}`;
       })
       .join("\n");
     
-    // Create response message
     const periodText = period ? ` (${period})` : "";
-    const message = `📊 **Time Logs for ${userName}**${periodText}\n` +
+    const message = `Time Logs for ${userName}${periodText}\n` +
       `**Period:** ${moment(startDate).format("DD MMM YYYY")} to ${moment(endDate).format("DD MMM YYYY")}\n\n` +
       `**Summary:**\n` +
       `• Total Hours: ${stats.totalHours}\n` +
       `• Work Days: ${stats.workDays}\n` +
-      `• Average per day: ${stats.averageHours.toFixed(1)} hours\n` +
-      `• Billable Hours: ${stats.billableHours}/${stats.totalWorkHours}\n\n` +
+      `• Average per day: ${stats.averageHours.toFixed(1)} hours\n\n` +
       `**Daily Logs:**\n${formattedLogs}`;
     
     await context.sendActivity(MessageFactory.text(message));
@@ -445,44 +405,223 @@ app.ai.action("GetTimeLogs", async (context, state, parameters) => {
   } catch (error) {
     console.error("[GetTimeLogs] Error:", error);
     await context.sendActivity(
-      MessageFactory.text(`❌ Error fetching time logs: ${error.message}`)
+      MessageFactory.text(`Error fetching time logs: ${error.message}`)
     );
   }
 });
 
-// Helper function to parse time log queries
+// -------------------------
+// GetProjectIssues action
+app.ai.action("GetProjectIssues", async (context, state, parameters) => {
+  console.log("\n=== GET PROJECT ISSUES ACTION CALLED ===");
+  console.log("Parameters:", parameters);
+  
+  const teamsChatId = "11111";
+  
+  const { projectName } = parameters || {};
+  console.log("Project name:", projectName);
+  
+  if (!projectName) {
+    await context.sendActivity(MessageFactory.text("❌ Please specify which project's issues you want to see."));
+    return;
+  }
+  
+  try {
+    // Get user token
+    let tokenDoc;
+    try {
+      tokenDoc = await getUserToken(teamsChatId);
+    } catch (err) {
+      console.error("[GetProjectIssues] Token error:", err.message);
+      await context.sendActivity("🔒 You need to authenticate with Zoho Projects first.");
+      return;
+    }
+
+    console.log(`Fetching issues for project: ${projectName}`);
+    
+    // Fetch issues for the project
+    const issues = await getProjectIssues(teamsChatId, config.zohoPortalId, projectName);
+    console.log(`Found ${issues.length} issues for project: ${projectName}`);
+    
+    // Debug: Log the first issue to see the data structure
+    if (issues.length > 0) {
+      console.log(`\n=== DEBUG: First issue data ===`);
+      console.log(JSON.stringify(issues[0], null, 2));
+    }
+    
+    if (issues.length === 0) {
+      await context.sendActivity(
+        MessageFactory.text(`📊 No issues found for project **${projectName}**.`)
+      );
+      return;
+    }
+
+    // Helper function to sanitize values for adaptive cards
+    const sanitizeValue = (value) => {
+      if (!value || value === "N/A") return "N/A";
+      return String(value).replace(/[^\w\s\-.,:()]/g, '').trim() || "N/A";
+    };
+
+    // Create adaptive card for issues
+    const card = {
+      type: "AdaptiveCard",
+      version: "1.4",
+      body: [
+        {
+          type: "TextBlock",
+          text: `📋 Issues in ${projectName}`,
+          weight: "Bolder",
+          size: "Large",
+          wrap: true,
+        },
+        {
+          type: "TextBlock",
+          text: `Found ${issues.length} issue(s)`,
+          size: "Medium",
+          color: "Accent",
+          wrap: true,
+        },
+        {
+          type: "Container",
+          items: issues.slice(0, 10).map((issue, index) => ({
+            type: "Container",
+            style: "emphasis",
+            items: [
+              {
+                type: "ColumnSet",
+                columns: [
+                  {
+                    type: "Column",
+                    width: "stretch",
+                    items: [
+                      {
+                        type: "TextBlock",
+                        text: `${sanitizeValue(issue.name)}`,
+                        weight: "Bolder",
+                        wrap: true,
+                        size: "Medium"
+                      },
+                      {
+                        type: "FactSet",
+                        facts: [
+                          { title: "Project", value: sanitizeValue(issue.project) },
+                          { title: "Reporter", value: sanitizeValue(issue.reporter) },
+                          { title: "Assignee", value: sanitizeValue(issue.assignee) },
+                          { title: "Status", value: sanitizeValue(issue.status) },
+                          { title: "Severity", value: sanitizeValue(issue.severity) },
+                          { title: "Created", value: sanitizeValue(issue.createdTime) },
+                          { title: "Due Date", value: sanitizeValue(issue.dueDate) },
+                          { title: "Last Modified", value: sanitizeValue(issue.lastModified) }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }))
+        }
+      ],
+      $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+    };
+
+    // Add pagination info if there are more than 10 issues
+    if (issues.length > 10) {
+      card.body.push({
+        type: "TextBlock",
+        text: `*Showing first 10 of ${issues.length} issues*`,
+        size: "Small",
+        color: "Default",
+        wrap: true,
+      });
+    }
+
+    await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
+    console.log("Project issues response sent successfully");
+    
+  } catch (error) {
+    console.error("[GetProjectIssues] Error:", error);
+    await context.sendActivity(
+      MessageFactory.text(`❌ Error fetching issues for project ${projectName}: ${error.message}`)
+    );
+  }
+});
+
 function parseTimeLogQuery(userInput, users) {
-  const moment = require("moment"); // Add this line
+  const moment = require("moment");
   const input = userInput.toLowerCase();
   let userName = null;
   let startDate = null;
   let endDate = null;
   let period = null;
   
+  console.log("Input:", input);
+  console.log("Available users:", users.map(u => u.name));
+  
+  // Extract the name part from the input - FIXED LOGIC
+  let nameQuery = input
+    .replace(/time logs for /gi, '')
+    .replace(/show me /gi, '')
+    .replace(/'s time logs/gi, '')
+    .replace(/\s+(in|for|during)\s+.*/gi, '') // Remove everything after "in", "for", "during"
+    .trim();
+  
+  console.log("Extracted name query:", nameQuery);
+  
   // Find user name by matching with available users
   for (const user of users) {
     const userFullName = user.name.toLowerCase();
-    const userFirstName = user.first_name?.toLowerCase() || "";
-    const userLastName = user.last_name?.toLowerCase() || "";
+    const parts = userFullName.split(' ');
+    const userFirstName = parts[0] || "";
+    const userLastName = parts[parts.length - 1] || "";
     
-    if (input.includes(userFullName) || 
-        input.includes(userFirstName) || 
-        input.includes(userLastName)) {
+    console.log(`Checking user: ${user.name} (${userFirstName}, ${userLastName})`);
+    
+    // Check exact matches first, then partial matches
+    if (userFullName === nameQuery || 
+        userFirstName === nameQuery || 
+        userLastName === nameQuery ||
+        userFullName.includes(nameQuery) ||
+        nameQuery.includes(userFirstName)) {
       userName = user.name;
+      console.log(`Found matching user: ${userName}`);
       break;
     }
   }
   
-  // Parse date patterns
-  const currentYear = moment().year();
+  // If no exact match, try more flexible matching
+  if (!userName) {
+    console.log("No exact match found, trying flexible matching...");
+    for (const user of users) {
+      const userFullName = user.name.toLowerCase();
+      const parts = userFullName.split(' ');
+      
+      // Check if any word in the query matches any word in the user name
+      const queryWords = nameQuery.split(' ');
+      const nameWords = parts;
+      
+      const hasMatch = queryWords.some(qWord => 
+        nameWords.some(nWord => 
+          qWord.length > 2 && nWord.includes(qWord)
+        )
+      );
+      
+      if (hasMatch) {
+        userName = user.name;
+        console.log(`Found flexible matching user: ${userName}`);
+        break;
+      }
+    }
+  }
   
-  // Pattern 1: "in May", "for May", "during May"
+  // Parse date patterns - keeping 2025 as requested
+  const currentYear = 2025;
+  
   const monthMatch = input.match(/(?:in|for|during)\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i);
   if (monthMatch) {
     const monthName = monthMatch[1];
     const monthNum = moment().month(monthName).month();
     if (monthNum >= 0) {
-      // Use current year for the month
       const targetYear = currentYear;
       startDate = moment().year(targetYear).month(monthNum).startOf('month').format('YYYY-MM-DD');
       endDate = moment().year(targetYear).month(monthNum).endOf('month').format('YYYY-MM-DD');
@@ -491,7 +630,7 @@ function parseTimeLogQuery(userInput, users) {
     }
   }
   
-  // Pattern 2: "first week of April", "second week of May"
+  // Other date parsing patterns...
   const weekMatch = input.match(/(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+week\s+of\s+(\w+)/);
   if (weekMatch) {
     const monthName = weekMatch[1];
@@ -504,14 +643,12 @@ function parseTimeLogQuery(userInput, users) {
     }
   }
   
-  // Pattern 3: "from 2024-01-01 to 2024-01-31"
   const dateRangeMatch = input.match(/from\s+(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})/);
   if (dateRangeMatch) {
     startDate = dateRangeMatch[1];
     endDate = dateRangeMatch[2];
   }
   
-  // Pattern 4: "last 7 days", "last month"
   if (input.includes('last 7 days')) {
     endDate = moment().format('YYYY-MM-DD');
     startDate = moment().subtract(7, 'days').format('YYYY-MM-DD');
@@ -522,12 +659,43 @@ function parseTimeLogQuery(userInput, users) {
     period = 'last month';
   }
   
+  console.log(`Parsed result - User: ${userName}, Start: ${startDate}, End: ${endDate}`);
   return { userName, startDate, endDate, period };
+}
+
+// Add this test function to debug what endpoints are available
+async function testAvailableEndpoints(teamsChatId, portalId) {
+  const token = await getUserToken(teamsChatId);
+  
+  const endpointsToTest = [
+    'timelogs',
+    'timesheet', 
+    'logs',
+    'projects',
+    'tasks'
+  ];
+  
+  for (const endpoint of endpointsToTest) {
+    try {
+      console.log(`Testing endpoint: ${endpoint}`);
+      const resp = await makeZohoAPICall(
+        `portal/${portalId}/${endpoint}`,
+        token.accessToken,
+        "GET",
+        null,
+        { per_page: 1 },
+        teamsChatId,
+        portalId
+      );
+      console.log(`✅ ${endpoint} works - response keys:`, Object.keys(resp?.data || {}));
+    } catch (error) {
+      console.log(`❌ ${endpoint} failed:`, error.message);
+    }
+  }
 }
 
 // Helper function to calculate time log statistics
 function calculateTimeLogStats(logs, startDate, endDate) {
-  const moment = require("moment");
   
   let totalHours = 0;
   let billableHours = 0;

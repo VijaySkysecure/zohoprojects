@@ -293,13 +293,13 @@ async function getPendingTasksByOwner(context, state, ownerName) {
       const perPage = 100;
       
       // Start from a high page number and work backwards to find the last 5 pages
-      let currentPage = 100; // Start high
+      let currentPage = 90; // Start high
       let foundPages = 0;
       let lastValidPage = 0;
       
       // First, find the last page by starting high and working down
       console.log(`Finding the last page...`);
-      while (currentPage > 0 && foundPages < 5) {
+      while (currentPage > 0 && foundPages < 7) {
         try {
           const response = await makeZohoAPICall(
             `portal/${portalId}/tasks`,
@@ -635,8 +635,7 @@ async function getUsers(teamsChatId) {
 }
 
 
-// Function to get ALL time logs with pagination
-// Function to get ALL time logs with pagination
+
 async function getAllTimeLogs(teamsChatId, portalId) {
   try {
     const token = await getUserToken(teamsChatId);
@@ -644,128 +643,71 @@ async function getAllTimeLogs(teamsChatId, portalId) {
       throw new Error("No valid token found");
     }
 
-    console.log("\n=== FETCHING ALL TIME LOGS WITH PAGINATION ===");
+    console.log("\n=== FETCHING ALL TIME LOGS WITH PAGINATION (INDIA REGION) ===");
     
     let allTimeLogs = [];
-    let page = 1;
-    const perPage = 100;
-    let hasMore = true;
+    
+    // Get current month's data
+    const currentDate = new Date();
+    const currentMonth = String(currentDate.getMonth() + 1).padStart(2, '0');
+    const currentYear = currentDate.getFullYear();
+    const formattedDate = `${currentMonth}-01-${currentYear}`;
+    
+    try {
+      const params = {
+        users_list: 'all',
+        view_type: 'month',
+        date: formattedDate,
+        bill_status: 'All',
+        component_type: 'task'
+      };
 
-    while (hasMore) {
-      console.log(`Fetching time logs page ${page}...`);
+      console.log(`Fetching time logs for India region with params:`, params);
+
+      const resp = await makeZohoAPICall(
+        `logs`, // This will use the India REST API endpoint
+        token.accessToken,
+        "GET",
+        null,
+        params,
+        teamsChatId,
+        portalId
+      );
       
-      try {
-        const params = {
-          per_page: perPage,
-          page: page
-        };
+      console.log(`Response structure:`, Object.keys(resp?.data || {}));
+      console.log(`Response data sample:`, JSON.stringify(resp?.data, null, 2).substring(0, 500));
+      
+      // Parse the response according to the documented structure
+      const timelogsData = resp?.data?.timelogs || {};
+      const dateEntries = timelogsData.date || [];
+      
+      console.log(`Found ${dateEntries.length} date entries`);
+      
+      // Extract logs from the nested structure
+      dateEntries.forEach(dateEntry => {
+        const tasklogs = dateEntry.tasklogs || [];
+        tasklogs.forEach(log => {
+          const processedLog = {
+            date: dateEntry.date,
+            hours: log.hours || 0,
+            minutes: log.minutes || 0,
+            userName: log.owner_name || "Unknown User",
+            projectName: log.project?.name || "Unknown Project",
+            taskName: log.task?.name || "Unknown Task",
+            description: log.notes || "",
+            billable: log.bill_status === "Billable"
+          };
+          allTimeLogs.push(processedLog);
+        });
+      });
 
-        let resp = null;
-        let workingEndpoint = null;
-        
-        // Approach 1: Try timesheet API with module in request body
-        try {
-          console.log(`  Trying timesheet API...`);
-          resp = await makeZohoAPICall(
-            `portal/${portalId}/timesheet`,
-            token.accessToken,
-            "GET",
-            null,
-            { per_page: params.per_page, page: params.page },
-            teamsChatId,
-            portalId
-          );
-          workingEndpoint = 'timesheet';
-          console.log(`  Using timesheet endpoint successfully`);
-        } catch (error) {
-          console.log(`  Timesheet endpoint failed: ${error.message}`);
-          
-          // Approach 2: Try with different parameters
-          try {
-            console.log(`  Trying timesheet with different params...`);
-            resp = await makeZohoAPICall(
-              `portal/${portalId}/timesheet`,
-              token.accessToken,
-              "GET",
-              null,
-              { per_page: 50, page: 1, sort: 'created_time' },
-              teamsChatId,
-              portalId
-            );
-            workingEndpoint = 'timesheet-alt';
-            console.log(`  Using timesheet with alt params`);
-          } catch (error2) {
-            console.log(`  Timesheet alt params failed: ${error2.message}`);
-            
-            // Approach 3: Try tasks API without timelogs include
-            try {
-              console.log(`  Trying tasks API...`);
-              resp = await makeZohoAPICall(
-                `portal/${portalId}/tasks`,
-                token.accessToken,
-                "GET",
-                null,
-                { per_page: params.per_page, page: params.page },
-                teamsChatId,
-                portalId
-              );
-              workingEndpoint = 'tasks';
-              console.log(`  Using tasks API`);
-            } catch (error3) {
-              console.log(`  Tasks API failed: ${error3.message}`);
-              throw new Error(`All time log endpoints failed`);
-            }
-          }
-        }
-
-        // Try different possible data structures
-        const logs = resp?.data?.timesheet || 
-                    resp?.data?.timelogs || 
-                    resp?.data?.logs || 
-                    resp?.data?.time_logs || 
-                    resp?.data || [];
-        
-        console.log(`  Page ${page}: Found ${logs.length} time logs`);
-        console.log(`  Response structure:`, Object.keys(resp?.data || {}));
-        
-        if (logs.length === 0) {
-          hasMore = false;
-        } else {
-          // Process and add logs
-          const processedLogs = logs.map(log => {
-            // Handle different possible field names
-            const workDate = log.work_date || log.date || log.log_date || log.created_time;
-            const hours = Number(log.hours || log.time_spent || log.duration || log.work_hours || 0);
-            const userName = log.user?.name || log.user_name || log.user?.full_name || log.owner?.name || "Unknown User";
-            const projectName = log.project?.name || log.project_name || log.project?.title || "Unknown Project";
-            const taskName = log.task?.name || log.task_name || log.task?.title || "Unknown Task";
-            const description = log.description || log.notes || log.comments || "";
-            const billable = log.bill_status === "billable" || log.is_billable === true;
-            
-            return {
-              date: workDate,
-              hours: hours,
-              userName: userName,
-              projectName: projectName,
-              taskName: taskName,
-              description: description,
-              billable: billable
-            };
-          });
-          
-          allTimeLogs = allTimeLogs.concat(processedLogs);
-          page++;
-          
-          // Small delay to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 200));
-        }
-      } catch (error) {
-        console.log(`  Time logs page ${page} failed: ${error.message}`);
-        hasMore = false;
-      }
+      console.log(`Total time logs processed: ${allTimeLogs.length}`);
+      
+    } catch (error) {
+      console.error(`Time logs fetch failed for India region: ${error.message}`);
+      console.error(`Error response:`, error.response?.data);
     }
 
-    console.log(`Total time logs fetched: ${allTimeLogs.length}`);
     return allTimeLogs;
 
   } catch (error) {
@@ -784,33 +726,104 @@ async function getTimeLogsForUser(teamsChatId, portalId, userId, fromDate, toDat
       throw new Error("No valid token found");
     }
 
-    const params = {
-      users_list: userId,
-      view_type: "custom_date",
-      custom_date: `{start_date:${moment(fromDate).format("DD-MM-YYYY")}, end_date:${moment(toDate).format("DD-MM-YYYY")}}`,
-      bill_status: "all",
-      per_page: 200
-    };
+    console.log(`\n=== FETCHING TIME LOGS FOR USER ${userId} ===`);
+    console.log(`Date range: ${fromDate} to ${toDate}`);
 
-    console.log("Fetching time logs with params:", params);
+    // Try multiple API endpoints
+    const endpoints = [
+      {
+        name: 'timelogs',
+        endpoint: `portal/${portalId}/timelogs`,
+        params: {
+          users_list: userId,
+          view_type: "custom_date",
+          date: `${moment(fromDate).format("MM-DD-YYYY")} to ${moment(toDate).format("MM-DD-YYYY")}`,
+          per_page: 200
+        }
+      },
+      {
+        name: 'timesheet',
+        endpoint: `portal/${portalId}/timesheet`,
+        params: {
+          users_list: userId,
+          view_type: "custom_date",
+          date: `${moment(fromDate).format("MM-DD-YYYY")} to ${moment(toDate).format("MM-DD-YYYY")}`,
+          per_page: 200
+        }
+      },
+      {
+        name: 'logs (REST API)',
+        endpoint: 'logs',
+        params: {
+          users_list: userId,
+          view_type: "custom_date",
+          date: `${moment(fromDate).format("MM-DD-YYYY")} to ${moment(toDate).format("MM-DD-YYYY")}`,
+          bill_status: 'All',
+          component_type: 'task'
+        }
+      }
+    ];
 
-    const resp = await makeZohoAPICall(
-      `portal/${portalId}/logs`,
-      token.accessToken,
-      "GET",
-      null,
-      params,
-      teamsChatId,
-      portalId
-    );
+    for (const endpointConfig of endpoints) {
+      try {
+        console.log(`Trying ${endpointConfig.name} endpoint...`);
+        
+        const resp = await makeZohoAPICall(
+          endpointConfig.endpoint,
+          token.accessToken,
+          "GET",
+          null,
+          endpointConfig.params,
+          teamsChatId,
+          portalId
+        );
 
-    console.log("Time logs API response:", resp?.data);
+        console.log(`${endpointConfig.name} response:`, Object.keys(resp?.data || {}));
 
-    const entries = resp?.data?.logs || resp?.data?.time_logs || [];
-    return entries.map(e => ({
-      date: e.work_date || e.date,
-      hours: Number(e.hours || e.time_spent || 0)
-    }));
+        // Try different response structures
+        let entries = [];
+        if (resp?.data?.timelogs) {
+          entries = resp.data.timelogs;
+        } else if (resp?.data?.logs) {
+          entries = resp.data.logs;
+        } else if (resp?.data?.timesheet) {
+          entries = resp.data.timesheet;
+        } else if (Array.isArray(resp?.data)) {
+          entries = resp.data;
+        } else if (resp?.data?.date) {
+          // Handle nested structure from logs endpoint
+          const dateEntries = resp.data.date || [];
+          entries = [];
+          dateEntries.forEach(dateEntry => {
+            const tasklogs = dateEntry.tasklogs || [];
+            tasklogs.forEach(log => {
+              entries.push({
+                work_date: dateEntry.date,
+                hours: log.hours || 0,
+                owner: { name: log.owner_name || "Unknown User" },
+                project: { name: log.project?.name || "Unknown Project" }
+              });
+            });
+          });
+        }
+
+        if (entries && entries.length > 0) {
+          console.log(`✅ ${endpointConfig.name} found ${entries.length} entries`);
+          return entries.map(e => ({
+            date: e.work_date || e.date,
+            hours: Number(e.hours || e.time_spent || 0),
+            userName: e.owner?.name || "Unknown User",
+            projectName: e.project?.name || "Unknown Project"
+          }));
+        }
+      } catch (error) {
+        console.log(`❌ ${endpointConfig.name} failed:`, error.message);
+      }
+    }
+
+    console.log("All endpoints failed or returned no data");
+    return [];
+
   } catch (error) {
     console.error("[getTimeLogsForUser] Error:", error);
     throw error;
@@ -819,6 +832,121 @@ async function getTimeLogsForUser(teamsChatId, portalId, userId, fromDate, toDat
 
 
 
+// -------------------------
+// ISSUES FUNCTIONS
+// -------------------------
+
+async function getProjectIssues(teamsChatId, portalId, projectName) {
+  try {
+    const token = await getUserToken(teamsChatId);
+    if (!token) throw new Error("No token found for user");
+
+    console.log(`\n=== FETCHING ISSUES FOR PROJECT: ${projectName} ===`);
+
+    // Function to get ALL issues with pagination
+    async function getAllIssues() {
+      console.log(`\n=== FETCHING ALL ISSUES WITH PAGINATION ===`);
+      
+      let allIssues = [];
+      let page = 1;
+      const perPage = 100;
+      let hasMore = true;
+
+      while (hasMore) {
+        console.log(`Fetching issues page ${page}...`);
+        
+        try {
+          const response = await makeZohoAPICall(
+            `portal/${portalId}/issues`,
+            token.accessToken,
+            "GET",
+            null,
+            { 
+              per_page: perPage,
+              page: page
+            },
+            teamsChatId,
+            portalId
+          );
+
+          const issues = response?.data?.issues || [];
+          console.log(`  Page ${page}: Found ${issues.length} issues`);
+          
+          if (issues.length === 0) {
+            hasMore = false;
+          } else {
+            allIssues = allIssues.concat(issues);
+            page++;
+            
+            // Small delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        } catch (error) {
+          console.log(`  Issues page ${page} failed: ${error.message}`);
+          hasMore = false;
+        }
+      }
+
+      console.log(`Total issues fetched: ${allIssues.length}`);
+      return allIssues;
+    }
+
+    // Get all issues
+    const allIssues = await getAllIssues();
+
+    // Debug: Log all unique project names found in issues
+    const uniqueProjectNames = [...new Set(allIssues.map(issue => 
+      issue.project?.name || issue.project_name || "No Project"
+    ))];
+    console.log(`\n=== DEBUG: All unique project names in issues ===`);
+    uniqueProjectNames.forEach((name, index) => {
+      console.log(`  ${index + 1}. "${name}"`);
+    });
+    console.log(`Searching for: "${projectName}"`);
+
+    // Filter issues by project name with improved matching
+    const projectIssues = allIssues.filter(issue => {
+      const issueProjectName = issue.project?.name || issue.project_name || "";
+      
+      // Normalize both strings: remove extra spaces, convert to lowercase
+      const normalizedIssueProject = issueProjectName.toLowerCase().replace(/\s+/g, ' ').trim();
+      const normalizedSearchProject = projectName.toLowerCase().replace(/\s+/g, ' ').trim();
+      
+      // Check for exact match or if the issue project contains the search term
+      const matches = normalizedIssueProject.includes(normalizedSearchProject) || 
+                     normalizedSearchProject.includes(normalizedIssueProject);
+      
+      if (matches) {
+        console.log(`✅ Match found: "${issueProjectName}" matches "${projectName}"`);
+      }
+      return matches;
+    });
+
+    console.log(`Found ${projectIssues.length} issues for project: ${projectName}`);
+
+
+    // Format issues for response
+    const formattedIssues = projectIssues.map(issue => ({
+      name: issue.title || issue.name || issue.subject || "Untitled Issue",
+      project: issue.project?.name || issue.project_name || "Unknown Project",
+      reporter: issue.created_by?.first_name || issue.created_by?.name || issue.reporter?.full_name || issue.reporter?.name || "Unknown",
+      createdTime: issue.created_time ? moment(issue.created_time).format("DD MMM YYYY HH:mm") : "N/A",
+      assignee: issue.assignee?.first_name || issue.assignee?.full_name || issue.assignee?.name || "Unassigned",
+      lastClosed: issue.last_closed ? moment(issue.last_closed).format("DD MMM YYYY HH:mm") : "N/A",
+      lastModified: issue.last_updated_time ? moment(issue.last_updated_time).format("DD MMM YYYY HH:mm") : "N/A",
+      dueDate: issue.due_date ? moment(issue.due_date).format("DD MMM YYYY HH:mm") : "N/A",
+      status: issue.status?.name || issue.status || "Unknown",
+      severity: issue.severity?.value || issue.severity?.name || issue.severity?.type || issue.severity || "None",
+      description: issue.description || "No description available"
+    }));
+
+    return formattedIssues;
+
+  } catch (error) {
+    console.error(`Error in getProjectIssues: ${error.message}`);
+    throw error;
+  }
+}
 
 // -------------------------
 // EXPORTS
@@ -833,5 +961,6 @@ module.exports = {
   resolveOwnerId,
   getUsers,
   getTimeLogsForUser,
-  getAllTimeLogs
+  getAllTimeLogs,
+  getProjectIssues
 };

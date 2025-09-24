@@ -65,5 +65,19 @@
       },
       "required": ["userInput"]
     }
+  },
+  {
+    "name": "GetProjectIssues",
+    "description": "Retrieves all issues from a specific project in Zoho Projects. Fetches all issues first, then filters by project name. Returns a paginated list of issues with details like ID, name, assignee, status, severity, due date, etc. in an adaptive card format.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "projectName": {
+          "type": "string",
+          "description": "The name of the project to get issues from (e.g., 'PowerGrid-XDF', 'L&T Corp-E5 Se'). Supports partial matching."
+        }
+      },
+      "required": ["projectName"]
+    }
   }
 ]
